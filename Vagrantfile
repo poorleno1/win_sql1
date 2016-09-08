@@ -2,22 +2,8 @@
 # vi: set ft=ruby :
 
 $installXymon = <<SCRIPT
-  Write-Host "Installing xymon Client"
-  c:
-  cd \\
-  mkdir C:\\temp
-#  (New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/poorleno1/xymonPS/master/installation_script.ps1', "c:\\temp\\installation_script.ps1")
-#  Invoke-Expression "& `"c:\\temp\\installation_script.ps1`""
-  Write-Host "Installing patches.."
-#  c:\vagrant\Windows8.1-KB2966828-x64.msu /quiet
-  Write-Host "Finished installing patches.."
- # Import-Module ServerManager 
- # Add-WindowsFeature PowerShell-ISE
- Write-Host "Installing .net 3.5"
- #Install-WindowsFeature Net-Framework-Core
- DISM /Online /Enable-Feature /FeatureName:NetFx3 /All
- Write-Host "Finished Installing .net 3.5"
- Write-Host "Configuring 500mb drive"
+ Write-host "Starting installation at:" (get-date)
+ Write-Host "Configuring drives"
  get-disk | where {$_.size -eq 500mb -and $_.partitionstyle -eq 'raw'} | Initialize-Disk -PartitionStyle MBR -PassThru | New-Partition -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS -NewFileSystemLabel "TempDisk" -Confirm:$false 
   Set-Partition -DriveLetter D -NewDriveLetter P 
  get-disk | where {$_.size -eq 11000mb -and $_.partitionstyle -eq 'raw'} | Initialize-Disk -PartitionStyle MBR -PassThru | New-Partition -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS -NewFileSystemLabel "DataDisk" -Confirm:$false 
@@ -27,11 +13,39 @@ $installXymon = <<SCRIPT
   get-disk | where {$_.size -eq 3000mb -and $_.partitionstyle -eq 'raw'} | Initialize-Disk -PartitionStyle MBR -PassThru | New-Partition -AssignDriveLetter -UseMaximumSize | Format-Volume -FileSystem NTFS -NewFileSystemLabel "BackupDisk" -Confirm:$false 
  Set-Partition -DriveLetter D -NewDriveLetter Z
  
- Write-Host "Finished configuring 500mb drive"
- Get-disk 
+ Write-Host "Finished configuring drives."
+#-------------------------------------------------------------------------------------------------------------------------------------------------------
+  Write-host "Starting at:" (get-date)
+  Write-Host "Installing xymon Client"
+  c:
+  cd \\
+  mkdir C:\\temp
+#  (New-Object System.Net.WebClient).DownloadFile('https://raw.githubusercontent.com/poorleno1/xymonPS/master/installation_script.ps1', "c:\\temp\\installation_script.ps1")
+#  Invoke-Expression "& `"c:\\temp\\installation_script.ps1`""
+#-------------------------------------------------------------------------------------------------------------------------------------------------------  
+  write-host "Starting at:" (get-date)
+  Write-Host "Installing patches.."
+#  c:\\vagrant\\Windows8.1-KB2966828-x64.msu /quiet
+  Write-Host "Finished installing patches.."
+ # Import-Module ServerManager 
+ # Add-WindowsFeature PowerShell-ISE
+ Write-Host "Installing .net 3.5"
+ #Install-WindowsFeature Net-Framework-Core
+ DISM /Online /Enable-Feature /FeatureName:NetFx3 /All
+ Write-Host "Finished Installing .net 3.5"
+
+ #------------------------------------------------------------------------------------------------------------------------------------------------------- 
+ write-host "Starting at:" (get-date)
+ Write-Host "Installing SQL server"
+ (Get-Content "C:\\vagrant\\config.txt").replace("WIN-2GANCD685SR",(get-childitem -path env:computername).value)| out-file "C:\\vagrant\\config_temp.txt"
+ C:\\vagrant\\SQLEXPRADV_x64_ENU\\setup.exe /ConfigurationFile="C:\\vagrant\\config_temp.txt" /IAcceptSQLServerLicenseTerms /SAPWD="Polska123"
+ Write-Host "Finished installing SQL server"
+ 
+ #-------------------------------------------------------------------------------------------------------------------------------------------------------
   #(New-Object System.Net.WebClient).DownloadFile('https://chocolatey.org/install.ps1', "c:\\temp\\install.ps1")
   #Invoke-Expression "& `"c:\\temp\\install.ps1`""
   #choco install -y git 
+  write-host "Finished at:" (get-date)
 SCRIPT
 
 
@@ -69,11 +83,11 @@ Vagrant.configure(2) do |config|
   # your network.
   # config.vm.network "public_network"
   
-  # if Vagrant.has_plugin?("vagrant-proxyconf")
-   # config.proxy.http     = "http://145.247.13.164:3128/"
-   # config.proxy.https    = "http://145.247.13.164:3128/"
-   # config.proxy.no_proxy = "localhost,127.0.0.1,.statoilfuelretail.com"
-  # end
+   if Vagrant.has_plugin?("vagrant-proxyconf")
+    config.proxy.http     = "http://145.247.13.164:3128/"
+    config.proxy.https    = "http://145.247.13.164:3128/"
+    config.proxy.no_proxy = "localhost,127.0.0.1,.statoilfuelretail.com"
+   end
   
   config.vm.post_up_message = "The OS is up and running."
 
@@ -93,32 +107,37 @@ Vagrant.configure(2) do |config|
   #
   #   # Customize the amount of memory on the VM:
     vb.memory = "1024"
+	vb.customize ["modifyvm", :id, "--clipboard", "bidirectional"]
    
    # Creating SATA Controller and adding disks to that controller
 	 file_to_disk4 = './tmp/backup_disk.vdi'
 	unless File.exist?(file_to_disk4)
  	  vb.customize ['storagectl', :id, '--add','sata' ,'--name', 'SATA Controller',  '--controller', 'IntelAHCI',  '--portcount', '6', '--hostiocache', 'on' ]
       vb.customize ['createhd', '--filename', file_to_disk4, '--size', 3000] # size is in MB
+	  vb.customize ['storageattach', :id, '--storagectl', 'SATA Controller', '--port', 0, '--device', 0, '--type', 'hdd', '--medium', file_to_disk4] 
     end
-     vb.customize ['storageattach', :id, '--storagectl', 'SATA Controller', '--port', 0, '--device', 0, '--type', 'hdd', '--medium', file_to_disk4] 
+     
 	
 	file_to_disk = './tmp/temp_disk.vdi'
 	unless File.exist?(file_to_disk)
       vb.customize ['createhd', '--filename', file_to_disk, '--size', 500] # size is in MB
+	  vb.customize ['storageattach', :id, '--storagectl', 'SATA Controller', '--port', 1, '--device', 0, '--type', 'hdd', '--medium', file_to_disk]
     end
-     vb.customize ['storageattach', :id, '--storagectl', 'SATA Controller', '--port', 1, '--device', 0, '--type', 'hdd', '--medium', file_to_disk]
+     
 	 
 	file_to_disk2 = './tmp/data_disk.vdi'
 	unless File.exist?(file_to_disk2)
       vb.customize ['createhd', '--filename', file_to_disk2, '--size', 11000] # size is in MB
+	  vb.customize ['storageattach', :id, '--storagectl', 'SATA Controller', '--port', 2, '--device', 0, '--type', 'hdd', '--medium', file_to_disk2] 
     end
-     vb.customize ['storageattach', :id, '--storagectl', 'SATA Controller', '--port', 2, '--device', 0, '--type', 'hdd', '--medium', file_to_disk2] 
+     
 	 
 	file_to_disk3 = './tmp/log_disk.vdi'
 	unless File.exist?(file_to_disk3)
       vb.customize ['createhd', '--filename', file_to_disk3, '--size', 2000] # size is in MB
+	  vb.customize ['storageattach', :id, '--storagectl', 'SATA Controller', '--port', 3, '--device', 0, '--type', 'hdd', '--medium', file_to_disk3] 
     end
-     vb.customize ['storageattach', :id, '--storagectl', 'SATA Controller', '--port', 3, '--device', 0, '--type', 'hdd', '--medium', file_to_disk3] 
+     
 
 	
    end
@@ -143,6 +162,7 @@ Vagrant.configure(2) do |config|
   
   config.vm.provision "shell" do |s|
     s.inline = $installXymon
+	s.binary = true
     # s.args = [GUEST_MODULE_DIR + "*"]
   end
 end
